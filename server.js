@@ -10,9 +10,13 @@ const app = express();
 const port = process.env.PORT || 8080;
 
 // Настройка подключения к БД Railway
+if (!process.env.DATABASE_URL) {
+  console.error('CRITICAL ERROR: DATABASE_URL is not defined in environment variables!');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : {
     rejectUnauthorized: false
   }
 });
@@ -22,8 +26,11 @@ app.use(express.json());
 
 // Инициализация таблицы при запуске
 const initDb = async () => {
+  if (!process.env.DATABASE_URL) return;
   try {
-    await pool.query(`
+    const client = await pool.connect();
+    console.log('Successfully connected to PostgreSQL');
+    await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -33,9 +40,11 @@ const initDb = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    console.log('Database initialized');
+    client.release();
+    console.log('Database table verified/created');
   } catch (err) {
-    console.error('DB Init Error:', err);
+    console.error('Database connection failed. Check if your PostgreSQL service is running and linked.');
+    console.error('Error details:', err.message);
   }
 };
 initDb();
