@@ -1,13 +1,15 @@
-const express = require('express');
-const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
-const cors = require('cors');
-require('dotenv').config();
+import express from 'express';
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
+import cors from 'cors';
+import 'dotenv/config';
+
+const { Pool } = pg;
 
 const app = express();
 const port = process.env.PORT || 8080;
 
-// Настройка подключения к БД Railway (DATABASE_URL берется из переменных окружения)
+// Настройка подключения к БД Railway
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -52,6 +54,7 @@ app.post('/api/register', async (req, res) => {
     if (err.code === '23505') {
       res.status(400).json({ ok: false, error: 'Пользователь с такой почтой уже существует' });
     } else {
+      console.error(err);
       res.status(500).json({ ok: false, error: 'Ошибка сервера' });
     }
   }
@@ -72,6 +75,7 @@ app.post('/api/login', async (req, res) => {
     }
     res.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar } });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ ok: false, error: 'Ошибка сервера' });
   }
 });
