@@ -2,9 +2,13 @@ import express from 'express';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import 'dotenv/config';
 
 const { Pool } = pg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -23,6 +27,14 @@ const pool = new Pool({
 
 app.use(cors());
 app.use(express.json());
+
+// Раздача статических файлов React приложения
+app.use(express.static(join(__dirname, 'dist')));
+
+// Все запросы перенаправляем на index.html для React Router
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'dist', 'index.html'));
+});
 
 // Инициализация таблицы при запуске
 const initDb = async () => {
