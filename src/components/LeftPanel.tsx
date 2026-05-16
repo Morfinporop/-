@@ -41,12 +41,12 @@ export default function LeftPanel({
     <div
       className="relative flex flex-col h-full flex-shrink-0"
       style={{
-        width: panelOpen ? '280px' : '64px',
-        background: 'linear-gradient(180deg, #fafafa 0%, #f3f3f3 100%)',
-        borderRight: '1px solid rgba(0,0,0,0.07)',
-        boxShadow: '2px 0 16px rgba(0,0,0,0.03)',
-        transition: 'width 0.32s cubic-bezier(0.4,0,0.2,1)',
-        overflow: 'hidden',
+        width: panelOpen ? '280px' : '80px',
+        background: panelOpen ? 'linear-gradient(180deg, #fafafa 0%, #f3f3f3 100%)' : 'transparent',
+        borderRight: panelOpen ? '1px solid rgba(0,0,0,0.07)' : 'none',
+        boxShadow: panelOpen ? '2px 0 16px rgba(0,0,0,0.03)' : 'none',
+        transition: 'width 0.32s cubic-bezier(0.4,0,0.2,1), background 0.3s ease',
+        overflow: 'visible',
       }}
     >
       {panelOpen ? (
@@ -146,38 +146,55 @@ export default function LeftPanel({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center pt-5 gap-3">
-          <button
-            onClick={onAvatarClick}
-            className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center cursor-pointer transition-all hover:scale-105"
+        <div className="flex flex-col items-center pt-6 gap-3" style={{ position: 'absolute', top: '0px', left: '32px', right: '8px', zIndex: 10 }}>
+          {/* Закруглённый фон для кнопок */}
+          <div
+            className="flex flex-col items-center gap-3 p-3"
             style={{
-              border: '1.5px solid rgba(0,0,0,0.09)',
-              background: 'linear-gradient(135deg, #ececec, #e0e0e0)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              background: 'linear-gradient(180deg, #ffffff 0%, #f5f5f5 100%)',
+              borderRadius: '20px',
+              border: '1px solid rgba(0,0,0,0.08)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
             }}
           >
-            {user?.avatar ? (
-              <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
-            ) : (
-              <AvatarIconSm />
-            )}
-          </button>
-          <button
-            onClick={onNewChat}
-            title="Новый чат"
-            className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/80 transition-all"
-            style={{ border: '1px solid rgba(0,0,0,0.06)' }}
-          >
-            <PlusIcon />
-          </button>
-          <button
-            onClick={onPanelToggle}
-            title="Открыть панель чатов"
-            className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/80 transition-all"
-            style={{ border: '1px solid rgba(0,0,0,0.06)' }}
-          >
-            <ListIcon />
-          </button>
+            <button
+              onClick={onAvatarClick}
+              className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center cursor-pointer transition-all hover:scale-105"
+              style={{
+                border: '2px solid rgba(0,0,0,0.1)',
+                background: 'linear-gradient(135deg, #ececec, #e0e0e0)',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+              }}
+            >
+              {user?.avatar ? (
+                <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                <AvatarIconSm />
+              )}
+            </button>
+            <button
+              onClick={onNewChat}
+              title="Новый чат"
+              className="w-14 h-14 rounded-2xl flex items-center justify-center hover:bg-white/90 transition-all"
+              style={{ 
+                border: '1px solid rgba(0,0,0,0.1)',
+                background: '#fff',
+              }}
+            >
+              <PlusIcon />
+            </button>
+            <button
+              onClick={onPanelToggle}
+              title="Открыть панель чатов"
+              className="w-14 h-14 rounded-2xl flex items-center justify-center hover:bg-white/90 transition-all"
+              style={{ 
+                border: '1px solid rgba(0,0,0,0.1)',
+                background: '#fff',
+              }}
+            >
+              <ListIcon />
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -195,25 +212,25 @@ function AvatarIcon() {
 
 function AvatarIconSm() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="8" r="4" stroke="#aaa" strokeWidth="1.6"/>
-      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="#aaa" strokeWidth="1.6" strokeLinecap="round"/>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="4" stroke="#999" strokeWidth="1.8"/>
+      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="#999" strokeWidth="1.8" strokeLinecap="round"/>
     </svg>
   );
 }
 
 function PlusIcon() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-      <path d="M12 5v14M5 12h14" stroke="#666" strokeWidth="2" strokeLinecap="round"/>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path d="M12 5v14M5 12h14" stroke="#666" strokeWidth="2.2" strokeLinecap="round"/>
     </svg>
   );
 }
 
 function ListIcon() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-      <path d="M3 6h18M3 12h18M3 18h18" stroke="#888" strokeWidth="1.8" strokeLinecap="round"/>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path d="M3 6h18M3 12h18M3 18h18" stroke="#888" strokeWidth="2" strokeLinecap="round"/>
     </svg>
   );
 }

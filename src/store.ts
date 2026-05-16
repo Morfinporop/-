@@ -39,7 +39,7 @@ export function removeUser() {
   localStorage.removeItem(USER_KEY);
 }
 
-const API_URL = 'https://llb.up.railway.app/api';
+const API_URL = window.location.origin + '/api';
 
 export async function registerUser(name: string, email: string, password: string) {
   try {
@@ -48,8 +48,10 @@ export async function registerUser(name: string, email: string, password: string
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password })
     });
-    return await res.json();
-  } catch {
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error('Register error:', err);
     return { ok: false, error: 'Ошибка подключения к серверу' };
   }
 }
@@ -61,8 +63,10 @@ export async function loginUser(email: string, password: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
-    return await res.json();
-  } catch {
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error('Login error:', err);
     return { ok: false, error: 'Ошибка подключения к серверу' };
   }
 }

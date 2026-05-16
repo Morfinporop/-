@@ -334,16 +334,44 @@ function CopyIcon() {
 
 function LikeIcon({ filled }: { filled: boolean }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill={filled ? '#ef4444' : 'none'}>
-      <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" stroke={filled ? '#ef4444' : '#666'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={filled ? 'animate-like' : ''}>
+      <defs>
+        <linearGradient id="likeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#22c55e" />
+          <stop offset="50%" stopColor="#16a34a" />
+          <stop offset="100%" stopColor="#15803d" />
+        </linearGradient>
+      </defs>
+      <path 
+        d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" 
+        fill={filled ? 'url(#likeGradient)' : 'none'}
+        stroke={filled ? 'url(#likeGradient)' : '#666'} 
+        strokeWidth="1.8" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function DislikeIcon({ filled }: { filled: boolean }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill={filled ? '#ef4444' : 'none'}>
-      <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" stroke={filled ? '#ef4444' : '#666'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={filled ? 'animate-dislike' : ''}>
+      <defs>
+        <linearGradient id="dislikeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ef4444" />
+          <stop offset="50%" stopColor="#dc2626" />
+          <stop offset="100%" stopColor="#b91c1c" />
+        </linearGradient>
+      </defs>
+      <path 
+        d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" 
+        fill={filled ? 'url(#dislikeGradient)' : 'none'}
+        stroke={filled ? 'url(#dislikeGradient)' : '#666'} 
+        strokeWidth="1.8" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

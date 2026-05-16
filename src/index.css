@@ -36,6 +36,24 @@
   100% { transform: rotate(360deg); }
 }
 
+@keyframes likeBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4px) scale(1.1); }
+}
+
+@keyframes dislikeBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(4px) scale(1.1); }
+}
+
+.animate-like {
+  animation: likeBounce 0.4s ease-in-out;
+}
+
+.animate-dislike {
+  animation: dislikeBounce 0.4s ease-in-out;
+}
+
 * {
   box-sizing: border-box;
 }
