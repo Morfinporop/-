@@ -112,7 +112,8 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Все запросы перенаправляем на index.html для React Router
-app.get('(.*)', (req, res) => {
+// В Express 5.x используется синтаксис '*path' для wildcard
+app.get('*path', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
