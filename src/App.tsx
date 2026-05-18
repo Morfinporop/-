@@ -151,7 +151,7 @@ export default function App() {
   }, [activeChatId, processResult, onThinking]);
 
   return (
-    <div className="flex h-screen w-screen" style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f0f0f0 50%, #e8e8e8 100%)', overflow: 'hidden', position: 'fixed', inset: 0 }}>
+    <div className="flex h-screen w-screen bg-white" style={{ overflow: 'hidden', position: 'fixed', inset: 0 }}>
       <LeftPanel
         chats={chats} activeChatId={activeChatId} user={user} panelOpen={panelOpen}
         onPanelToggle={() => setPanelOpen(p => !p)} onNewChat={createNewChat}
@@ -163,9 +163,9 @@ export default function App() {
         onAvatarClick={() => { if (!user) { setAuthMode('login'); setShowAuth(true); } else setShowProfile(true); }}
         onRulesClick={() => window.open('https://moai-policy.up.railway.app/', '_blank')}
       />
-      <div className="flex-1 flex flex-col min-w-0 relative" style={{ overflow: 'hidden' }}>
+      <div className="flex-1 flex flex-col min-w-0 relative bg-white" style={{ overflow: 'hidden' }}>
         <TopBar activeTab={activeTab as any} onTabChange={setActiveTab as any} />
-        <div style={{ display: activeTab === 'ai' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, animation: 'fadeIn 0.3s ease' }}>
+        <div style={{ display: activeTab === 'ai' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, animation: 'fadeIn 0.3s ease', justifyContent: 'center', alignItems: 'center' }}>
           <ChatArea chat={activeChat} onSend={handleSendMessage} user={user} isGenerating={isGenerating} onStop={() => { stopGeneration(); setIsGenerating(false); }} />
         </div>
         {activeTab === 'images' && <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flex: 1, minHeight: 0 }}><ImagesFeed /></div>}

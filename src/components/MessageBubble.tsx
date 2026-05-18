@@ -79,10 +79,10 @@ export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) 
               />
             ))}
           </div>
-          <span className="text-[10px] text-text-muted">анализирую...</span>
+          <span className="text-[10px] text-gray-500">анализирую...</span>
         </div>
         {(msg as any).source && (
-          <div className="text-[9px] text-text-muted italic ml-0.5">Источник: {(msg as any).source}</div>
+          <div className="text-[9px] text-gray-500 italic ml-0.5">Источник: {(msg as any).source}</div>
         )}
       </div>
     </div>
@@ -98,7 +98,7 @@ export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) 
             </div>
           )}
           <div className="relative group">
-            <div className="px-4 py-2.5 rounded-2xl text-sm leading-relaxed bg-gradient-to-r from-gray-50 to-white border border-gray-200 shadow-sm text-gray-800 pb-7 transition-all" style={{ minWidth: '100px', width: 'fit-content' }}>
+            <div className="px-4 py-2.5 rounded-2xl text-sm leading-relaxed bg-gray-50 border border-gray-200 shadow-sm text-gray-800 pb-7 transition-all" style={{ minWidth: '100px', width: 'fit-content' }}>
               <span style={{ direction: 'ltr', display: 'inline-block', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{collapsed ? msg.text.slice(0, 200) + '...' : msg.text}</span>
             </div>
             <div className="absolute bottom-1.5 right-3 flex items-center gap-2">
@@ -126,19 +126,19 @@ export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) 
               displayText.split('\n').map((line, i) => <p key={i} className={i > 0 ? 'mt-2' : ''}>{clean(line)}</p>)
             )}
           </div>
-          {isMed && !isStopped && <p className="text-[10px] text-text-muted mt-2 border-l-2 border-gray-200 pl-2">Нейросеть не врач, она может ошибаться. Обратитесь к специалисту.</p>}
+          {isMed && !isStopped && <p className="text-[10px] text-gray-500 mt-2 border-l-2 border-gray-200 pl-2">Нейросеть не врач, она может ошибаться. Обратитесь к специалисту.</p>}
           {!isStopped && (
             <div className="flex items-center gap-1 mt-2 relative">
-              <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-surface-dim transition-colors">
+              <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
                 {copied ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/></svg> : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>}
               </button>
-              <button onClick={() => handleLike(liked === true ? null : true)} className="p-1.5 rounded-lg hover:bg-surface-dim"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={liked===true?'#22c55e':'#888'} strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" fill={liked===true?'#22c55e':'none'}/></svg></button>
-              <button onClick={() => handleLike(liked === false ? null : false)} className="p-1.5 rounded-lg hover:bg-surface-dim"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={liked===false?'#ef4444':'#888'} strokeWidth="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" fill={liked===false?'#ef4444':'none'}/></svg></button>
-              <button onClick={() => setMenuOpen(!menuOpen)} className="p-1.5 rounded-lg hover:bg-surface-dim"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              <button onClick={() => handleLike(liked === true ? null : true)} className="p-1.5 rounded-lg hover:bg-gray-100"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={liked===true?'#22c55e':'#888'} strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" fill={liked===true?'#22c55e':'none'}/></svg></button>
+              <button onClick={() => handleLike(liked === false ? null : false)} className="p-1.5 rounded-lg hover:bg-gray-100"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={liked===false?'#ef4444':'#888'} strokeWidth="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" fill={liked===false?'#ef4444':'none'}/></svg></button>
+              <button onClick={() => setMenuOpen(!menuOpen)} className="p-1.5 rounded-lg hover:bg-gray-100"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
               {menuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                  <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-xl py-1 bg-white border border-border min-w-[150px] animate-fade-in">
+                  <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-xl py-1 bg-white border border-gray-200 min-w-[150px] animate-fade-in">
                     <button onClick={() => { const b = new Blob([clean(msg.text)], { type: 'text/plain;charset=utf-8' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = 'answer.txt'; a.click(); setMenuOpen(false); }} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">Экспорт TXT</button>
                     <button onClick={() => { const j = JSON.stringify({ text: clean(msg.text), time: msg.time }, null, 2); const b = new Blob([j], { type: 'application/json;charset=utf-8' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = 'answer.json'; a.click(); setMenuOpen(false); }} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">Экспорт JSON</button>
                   </div>
