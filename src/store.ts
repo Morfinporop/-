@@ -4,16 +4,52 @@ const CHATS_KEY = 'ano_chats';
 const USER_KEY = 'ano_user';
 const API_URL = window.location.origin + '/api';
 
-export function loadChats(): Chat[] {
+export async function loadChats(userEmail?: string | null): Promise<Chat[]> {
+  // Для гостей не загружаем из базы данных
+  if (!userEmail) {
+    try {
+      const raw = localStorage.getItem(CHATS_KEY);
+      if (!raw) return [];
+      return JSON.parse(raw);
+    } catch { return []; }
+  }
+  
+  // Для авторизованных пользователей загружаем из базы данных
   try {
-    const raw = localStorage.getItem(CHATS_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch { return []; }
+    const res = await fetch(`${API_URL}/load-chats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userEmail })
+    });
+    const data = await res.json();
+    if (data.ok && data.chats) {
+      return data.chats;
+    }
+    return [];
+  } catch {
+    return [];
+  }
 }
 
-export function saveChats(chats: Chat[]) {
-  localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+export async function saveChats(chats: Chat[], userEmail?: string | null) {
+  // Для гостей сохраняем только локально
+  if (!userEmail) {
+    localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+    return;
+  }
+  
+  // Для авторизованных пользователей сохраняем в базу данных
+  try {
+    for (const chat of chats) {
+      await fetch(`${API_URL}/save-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat, userEmail })
+      });
+    }
+  } catch (error) {
+    console.error('Ошибка сохранения чатов в базу данных:', error);
+  }
 }
 
 export function loadUser(): User | null {
@@ -109,4 +145,19 @@ export function setMessageLike(chatId: string, messageId: string, liked: boolean
   }
   
   saveLikes(likes);
+}
+
+
+export async function deleteChatFromDB(chatId: string, userEmail?: string | null) {
+  if (!userEmail) return;
+  
+  try {
+    await fetch(`${API_URL}/delete-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId, userEmail })
+    });
+  } catch (error) {
+    console.error('Ошибка удаления чата из базы данных:', error);
+  }
 }

@@ -149,3 +149,270 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`🌐 Mode: PostgreSQL`);
 });
+
+
+// Steam аутентификация
+app.get('/api/auth/steam', (req, res) => {
+  // В реальном приложении здесь была бы интеграция с Steam API
+  // Для демо просто возвращаем сообщение
+  res.json({ ok: false, error: 'Steam аутентификация временно недоступна' });
+});
+
+// Инициализация таблиц для чатов, картинок и новостей
+const initAllTables = async () => {
+  if (!pool) return;
+  try {
+    const client = await pool.connect();
+    
+    // Таблица чатов
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS chats (
+        id TEXT PRIMARY KEY,
+        user_email TEXT,
+        title TEXT NOT NULL,
+        messages JSONB DEFAULT '[]',
+        created_at BIGINT NOT NULL,
+        FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
+      );
+    `);
+    
+    // Таблица картинок
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS images (
+        id TEXT PRIMARY KEY,
+        user_email TEXT,
+        image_url TEXT NOT NULL,
+        caption TEXT,
+        user_name TEXT,
+        user_avatar TEXT,
+        created_at BIGINT NOT NULL,
+        FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
+      );
+    `);
+    
+    // Таблица новостей
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS news (
+        id TEXT PRIMARY KEY,
+        user_email TEXT,
+        text TEXT NOT NULL,
+        user_name TEXT,
+        user_avatar TEXT,
+        created_at BIGINT NOT NULL,
+        FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
+      );
+    `);
+    
+    // Добавляем администратора если его нет
+    const adminEmail = 'energoferon41@gmail.com';
+    const adminCheck = await client.query('SELECT * FROM users WHERE email = $1', [adminEmail]);
+    if (adminCheck.rows.length === 0) {
+      const hashedPassword = await bcrypt.hash('admin123', 10);
+      await client.query(
+        'INSERT INTO users (name, email, password, avatar) VALUES ($1, $2, $3, $4)',
+        ['Администратор', adminEmail, hashedPassword, null]
+      );
+      console.log('✓ Администратор создан');
+    }
+    
+    client.release();
+    console.log('✓ Все таблицы готовы');
+  } catch (err) {
+    console.error('✗ Ошибка инициализации таблиц:', err.message);
+  }
+};
+initAllTables();
+
+// Сохранение чата
+app.post('/api/save-chat', async (req, res) => {
+  const { chat, userEmail } = req.body;
+  if (!pool || !userEmail) {
+    return res.json({ ok: true }); // Для гостей не сохраняем
+  }
+  
+  try {
+    await pool.query(
+      `INSERT INTO chats (id, user_email, title, messages, created_at) 
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET 
+         title = EXCLUDED.title,
+         messages = EXCLUDED.messages,
+         created_at = EXCLUDED.created_at`,
+      [chat.id, userEmail.toLowerCase(), chat.title, JSON.stringify(chat.messages), chat.createdAt]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Ошибка сохранения чата:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Загрузка чатов пользователя
+app.post('/api/load-chats', async (req, res) => {
+  const { userEmail } = req.body;
+  if (!pool || !userEmail) {
+    return res.json({ ok: true, chats: [] }); // Для гостей пустой список
+  }
+  
+  try {
+    const result = await pool.query(
+      'SELECT * FROM chats WHERE user_email = $1 ORDER BY created_at DESC',
+      [userEmail.toLowerCase()]
+    );
+    const chats = result.rows.map(row => ({
+      id: row.id,
+      title: row.title,
+      messages: row.messages || [],
+      createdAt: row.created_at
+    }));
+    res.json({ ok: true, chats });
+  } catch (err) {
+    console.error('Ошибка загрузки чатов:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Удаление чата
+app.post('/api/delete-chat', async (req, res) => {
+  const { chatId, userEmail } = req.body;
+  if (!pool || !userEmail) {
+    return res.json({ ok: true });
+  }
+  
+  try {
+    await pool.query('DELETE FROM chats WHERE id = $1 AND user_email = $2', [chatId, userEmail.toLowerCase()]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Ошибка удаления чата:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Сохранение картинки
+app.post('/api/save-image', async (req, res) => {
+  const { image, userEmail } = req.body;
+  if (!pool || !userEmail) {
+    return res.json({ ok: true });
+  }
+  
+  try {
+    await pool.query(
+      `INSERT INTO images (id, user_email, image_url, caption, user_name, user_avatar, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [image.id, userEmail.toLowerCase(), image.imageUrl, image.caption, image.userName, image.userAvatar, image.createdAt]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Ошибка сохранения картинки:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Загрузка картинок
+app.get('/api/load-images', async (req, res) => {
+  if (!pool) {
+    return res.json({ ok: true, images: [] });
+  }
+  
+  try {
+    const result = await pool.query('SELECT * FROM images ORDER BY created_at DESC LIMIT 50');
+    const images = result.rows.map(row => ({
+      id: row.id,
+      imageUrl: row.image_url,
+      caption: row.caption,
+      userName: row.user_name,
+      userAvatar: row.user_avatar,
+      createdAt: row.created_at
+    }));
+    res.json({ ok: true, images });
+  } catch (err) {
+    console.error('Ошибка загрузки картинок:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Удаление картинки (только для администратора)
+app.post('/api/delete-image', async (req, res) => {
+  const { imageId, userEmail } = req.body;
+  if (!pool || !userEmail) {
+    return res.json({ ok: false, error: 'Не авторизован' });
+  }
+  
+  try {
+    // Проверяем, является ли пользователь администратором
+    const userResult = await pool.query('SELECT email FROM users WHERE email = $1', [userEmail.toLowerCase()]);
+    if (userResult.rows.length === 0 || userEmail.toLowerCase() !== 'energoferon41@gmail.com') {
+      return res.json({ ok: false, error: 'Только администратор может удалять картинки' });
+    }
+    
+    await pool.query('DELETE FROM images WHERE id = $1', [imageId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Ошибка удаления картинки:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Сохранение новости
+app.post('/api/save-news', async (req, res) => {
+  const { news, userEmail } = req.body;
+  if (!pool || !userEmail) {
+    return res.json({ ok: true });
+  }
+  
+  try {
+    await pool.query(
+      `INSERT INTO news (id, user_email, text, user_name, user_avatar, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [news.id, userEmail.toLowerCase(), news.text, news.userName, news.userAvatar, news.createdAt]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Ошибка сохранен��я новости:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Загрузка новостей
+app.get('/api/load-news', async (req, res) => {
+  if (!pool) {
+    return res.json({ ok: true, news: [] });
+  }
+  
+  try {
+    const result = await pool.query('SELECT * FROM news ORDER BY created_at DESC LIMIT 100');
+    const news = result.rows.map(row => ({
+      id: row.id,
+      text: row.text,
+      userName: row.user_name,
+      userAvatar: row.user_avatar,
+      createdAt: row.created_at
+    }));
+    res.json({ ok: true, news });
+  } catch (err) {
+    console.error('Ошибка загрузки новостей:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Удаление новости (только для администратора)
+app.post('/api/delete-news', async (req, res) => {
+  const { newsId, userEmail } = req.body;
+  if (!pool || !userEmail) {
+    return res.json({ ok: false, error: 'Не авторизован' });
+  }
+  
+  try {
+    // Проверяем, является ли пользователь администратором
+    const userResult = await pool.query('SELECT email FROM users WHERE email = $1', [userEmail.toLowerCase()]);
+    if (userResult.rows.length === 0 || userEmail.toLowerCase() !== 'energoferon41@gmail.com') {
+      return res.json({ ok: false, error: 'Только администратор может удалять новости' });
+    }
+    
+    await pool.query('DELETE FROM news WHERE id = $1', [newsId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Ошибка удаления новости:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});

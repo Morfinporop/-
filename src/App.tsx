@@ -18,13 +18,37 @@ function stripMeta(text: string): string { return text.replace(/\n?HIGHLIGHTS:\[
 const UPLOAD_IMG = /загрузи в картинки/i;
 const UPLOAD_NEWS = /загрузи в новости/i;
 
-const getImages = () => JSON.parse(localStorage.getItem('moai_images') || '[]');
-const saveImages = (d: any) => localStorage.setItem('moai_images', JSON.stringify(d));
-const getNews = () => JSON.parse(localStorage.getItem('moai_news') || '[]');
-const saveNews = (d: any) => localStorage.setItem('moai_news', JSON.stringify(d));
+const getImages = () => {
+  try {
+    return JSON.parse(localStorage.getItem('moai_images') || '[]');
+  } catch {
+    return [];
+  }
+};
+const saveImages = (d: any) => {
+  try {
+    localStorage.setItem('moai_images', JSON.stringify(d));
+  } catch (error) {
+    console.error('Ошибка сохранения картинок в localStorage:', error);
+  }
+};
+const getNews = () => {
+  try {
+    return JSON.parse(localStorage.getItem('moai_news') || '[]');
+  } catch {
+    return [];
+  }
+};
+const saveNews = (d: any) => {
+  try {
+    localStorage.setItem('moai_news', JSON.stringify(d));
+  } catch (error) {
+    console.error('Ошибка сохранения новостей в localStorage:', error);
+  }
+};
 
 export default function App() {
-  const [chats, setChats] = useState<Chat[]>(() => loadChats());
+  const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(() => loadUser());
   const [panelOpen, setPanelOpen] = useState(false);
@@ -36,11 +60,31 @@ export default function App() {
 
   const activeChat = chats.find(c => c.id === activeChatId) || null;
 
-  useEffect(() => { saveChats(chats); }, [chats]);
+  // Загрузка чатов при изменении пользователя
+  useEffect(() => {
+    const loadUserChats = async () => {
+      const loadedChats = await loadChats(user?.email || null);
+      setChats(loadedChats);
+      
+      if (loadedChats.length === 0) {
+        createNewChat();
+      } else if (!activeChatId) {
+        setActiveChatId(loadedChats[0].id);
+      }
+    };
+    
+    loadUserChats();
+  }, [user]);
 
-  const createNewChat = useCallback(() => {
+  // Сохранение чатов при изменении
+  useEffect(() => { 
+    saveChats(chats, user?.email || null); 
+  }, [chats, user]);
+
+  const createNewChat = useCallback((firstMessage?: string) => {
     const id = generateId();
-    setChats(prev => [{ id, title: 'Новый чат', messages: [], createdAt: Date.now() }, ...prev]);
+    const title = firstMessage ? firstMessage.slice(0, 40) + (firstMessage.length > 40 ? '...' : '') : 'Новый чат';
+    setChats(prev => [{ id, title, messages: [], createdAt: Date.now() }, ...prev]);
     setActiveChatId(id);
     clearAIHistory(id);
     setActiveTab('ai');
@@ -83,16 +127,55 @@ export default function App() {
 
         const uName = user?.name || 'Гость';
         const uAvatar = user?.avatar || null;
+        const uEmail = user?.email || null;
 
         // Загрузка только если нет блокировки
         if (UPLOAD_IMG.test(userText) && media && media.length > 0) {
           const imgs = getImages();
-          media.forEach(m => { if (m.startsWith('data:image')) imgs.unshift({ id: generateId(), imageUrl: m, caption: userText.replace(UPLOAD_IMG, '').trim(), userName: uName, userAvatar: uAvatar, createdAt: Date.now() }); });
+          media.forEach(m => { 
+            if (m.startsWith('data:image')) {
+              const imageData = { 
+                id: generateId(), 
+                imageUrl: m, 
+                caption: userText.replace(UPLOAD_IMG, '').trim(), 
+                userName: uName, 
+                userAvatar: uAvatar, 
+                createdAt: Date.now() 
+              };
+              imgs.unshift(imageData);
+              
+              // Сохраняем в базу данных если пользователь авторизован
+              if (uEmail) {
+                fetch('/api/save-image', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ image: imageData, userEmail: uEmail })
+                }).catch(console.error);
+              }
+            }
+          });
           saveImages(imgs.slice(0, 50));
         }
         if (UPLOAD_NEWS.test(userText)) {
           const news = getNews();
-          news.unshift({ id: generateId(), text: cleanText.replace(UPLOAD_NEWS, '').trim(), userName: uName, userAvatar: uAvatar, createdAt: Date.now() });
+          const newsData = { 
+            id: generateId(), 
+            text: cleanText.replace(UPLOAD_NEWS, '').trim(), 
+            userName: uName, 
+            userAvatar: uAvatar, 
+            createdAt: Date.now() 
+          };
+          news.unshift(newsData);
+          
+          // Сохраняем в базу данных если пользователь авторизован
+          if (uEmail) {
+            fetch('/api/save-news', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ news: newsData, userEmail: uEmail })
+            }).catch(console.error);
+          }
+          
           saveNews(news.slice(0, 100));
         }
       }
@@ -108,9 +191,14 @@ export default function App() {
   }, []);
 
   const handleSendMessage = useCallback(async (text: string, editingMsgId?: string, media?: string[]) => {
-    if (!activeChatId) return;
+    let chatId = activeChatId;
     const now = nowTime();
-    const chatId = activeChatId;
+
+    // Если нет активного чата, создаем новый
+    if (!chatId) {
+      createNewChat(text);
+      chatId = generateId(); // Получаем новый ID
+    }
 
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, createdAt: Date.now() } : c));
 
@@ -131,7 +219,7 @@ export default function App() {
         return { ...c, messages: newMsgs };
       }));
       setIsGenerating(true);
-      askAnoAI(chatId, text, (id, src) => onThinking(chatId, id, src), (id, res) => processResult(chatId, id, res, text, media), thinkingId, media);
+      askAnoAI(chatId!, text, (id, src) => onThinking(chatId!, id, src), (id, res) => processResult(chatId!, id, res, text, media), thinkingId, media);
       return;
     }
 
@@ -147,8 +235,8 @@ export default function App() {
     }));
 
     setIsGenerating(true);
-    await askAnoAI(chatId, text, (id, src) => onThinking(chatId, id, src), (id, res) => processResult(chatId, id, res, text, media), thinkingId, media);
-  }, [activeChatId, processResult, onThinking]);
+    await askAnoAI(chatId!, text, (id, src) => onThinking(chatId!, id, src), (id, res) => processResult(chatId!, id, res, text, media), thinkingId, media);
+  }, [activeChatId, processResult, onThinking, createNewChat]);
 
   return (
     <div className="flex h-screen w-screen bg-white" style={{ overflow: 'hidden', position: 'fixed', inset: 0 }}>
@@ -159,6 +247,7 @@ export default function App() {
         onDeleteChat={id => {
           setChats(prev => prev.filter(c => c.id !== id));
           clearAIHistory(id);
+          deleteChatFromDB(id, user?.email || null);
         }}
         onAvatarClick={() => { if (!user) { setAuthMode('login'); setShowAuth(true); } else setShowProfile(true); }}
         onRulesClick={() => window.open('https://moai-policy.up.railway.app/', '_blank')}
@@ -168,8 +257,8 @@ export default function App() {
         <div style={{ display: activeTab === 'ai' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, animation: 'fadeIn 0.3s ease', justifyContent: 'center', alignItems: 'center' }}>
           <ChatArea chat={activeChat} onSend={handleSendMessage} user={user} isGenerating={isGenerating} onStop={() => { stopGeneration(); setIsGenerating(false); }} />
         </div>
-        {activeTab === 'images' && <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flex: 1, minHeight: 0 }}><ImagesFeed /></div>}
-        {activeTab === 'news' && <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flex: 1, minHeight: 0 }}><NewsFeed /></div>}
+        {activeTab === 'images' && <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flex: 1, minHeight: 0 }}><ImagesFeed user={user} /></div>}
+        {activeTab === 'news' && <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flex: 1, minHeight: 0 }}><NewsFeed user={user} /></div>}
       </div>
       {showAuth && (
         <AuthModal mode={authMode} onModeChange={setAuthMode}

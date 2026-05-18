@@ -10,6 +10,89 @@ interface Props {
 
 const clean = (t: string) => t.replace(/\*\*([^*]+)\*\*/g, '$1');
 
+// Функция для разделения текста на предложения
+const splitIntoSentences = (text: string): string[] => {
+  if (!text) return [];
+  
+  // Нормализуем текст: заменяем множественные пробелы и переносы строк
+  const normalizedText = text.replace(/\s+/g, ' ').trim();
+  
+  // Разделяем по точкам, восклицательным, вопросительным знакам и двоеточиям
+  const sentences = normalizedText.split(/(?<=[.!?:])\s+(?=[А-ЯA-Z0-9])/);
+  
+  // Фильтруем пустые строки и объединяем короткие предложения
+  const result: string[] = [];
+  let buffer = '';
+  
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+    
+    // Проверяем, не является ли это сокращением (т.д., т.п., etc.)
+    const isAbbreviation = /^[а-яa-z]\.\s*$/i.test(trimmed) || 
+                          /^[А-ЯA-Z]\.\s*$/.test(trimmed) ||
+                          /^(т\.д\.|т\.п\.|др\.|пр\.|etc\.)/i.test(trimmed);
+    
+    if (isAbbreviation) {
+      // Если это сокращение, добавляем к предыдущему предложению
+      if (result.length > 0) {
+        result[result.length - 1] += ' ' + trimmed;
+      } else if (buffer) {
+        buffer += ' ' + trimmed;
+      } else {
+        buffer = trimmed;
+      }
+      continue;
+    }
+    
+    // Если предложение очень короткое (меньше 3 слов или 25 символов)
+    const wordCount = trimmed.split(/\s+/).length;
+    if (wordCount < 3 && trimmed.length < 25 && buffer.length < 60) {
+      buffer += (buffer ? ' ' : '') + trimmed;
+    } else {
+      // Если в буфере что-то есть, добавляем его
+      if (buffer) {
+        result.push(buffer);
+        buffer = '';
+      }
+      result.push(trimmed);
+    }
+  }
+  
+  // Добавляем остаток из буфера
+  if (buffer) {
+    result.push(buffer);
+  }
+  
+  // Если текст не содержит знаков препинания, разбиваем по запятым или просто на части
+  if (result.length === 1 && result[0].length > 80) {
+    const longText = result[0];
+    // Пробуем разбить по запятым
+    const commaParts = longText.split(/(?<=[,;])\s+/);
+    if (commaParts.length > 1) {
+      return commaParts.map(part => part.trim()).filter(part => part.length > 0);
+    }
+    
+    // Или разбиваем на равные части по ~60 символов
+    const chunks: string[] = [];
+    for (let i = 0; i < longText.length; i += 60) {
+      let chunk = longText.slice(i, i + 60);
+      // Стараемся закончить на границе слова
+      if (i + 60 < longText.length && !/\s$/.test(chunk) && longText[i + 60] !== ' ') {
+        const lastSpace = chunk.lastIndexOf(' ');
+        if (lastSpace > 40) {
+          chunk = chunk.slice(0, lastSpace);
+          i -= (60 - lastSpace);
+        }
+      }
+      chunks.push(chunk.trim());
+    }
+    return chunks;
+  }
+  
+  return result;
+};
+
 export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) {
   const [displayText, setDisplayText] = useState(msg.role === 'assistant' ? '' : msg.text);
   const [liked, setLiked] = useState<boolean | null>(() => {
@@ -24,11 +107,72 @@ export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) 
 
   useEffect(() => {
     if (msg.role === 'assistant' && msg.text !== '[stopped]') {
-      // Для новых сообщений - плавное появление
+      // Для новых сообщений - плавное появление с интеллектуальным разбиением
       if (displayText.length < msg.text.length) {
+        const remainingText = msg.text.slice(displayText.length);
+        
+        // Определяем размер следующего чанка
+        let chunkSize = 0;
+        
+        // 1. Пробуем найти конец предложения
+        const sentenceEndMatch = remainingText.match(/[.!?]\s/);
+        if (sentenceEndMatch && sentenceEndMatch.index !== undefined && sentenceEndMatch.index < 80) {
+          chunkSize = sentenceEndMatch.index + 2; // Знак препинания + пробел
+        } 
+        // 2. Или конец абзаца (два переноса строки)
+        else if (remainingText.includes('\n\n')) {
+          const paragraphEnd = remainingText.indexOf('\n\n');
+          chunkSize = paragraphEnd + 2;
+        }
+        // 3. Или конец строки
+        else if (remainingText.includes('\n')) {
+          const lineEnd = remainingText.indexOf('\n');
+          chunkSize = lineEnd + 1;
+        }
+        // 4. Или следующую запятую
+        else if (remainingText.includes(', ')) {
+          const commaEnd = remainingText.indexOf(', ');
+          chunkSize = commaEnd + 2;
+        }
+        // 5. Или следующее слово (примерно 15-25 символов)
+        else {
+          // Ищем конец слова через 15-25 символов
+          const searchStart = Math.min(15, remainingText.length);
+          const searchEnd = Math.min(25, remainingText.length);
+          
+          for (let i = searchStart; i <= searchEnd; i++) {
+            if (i >= remainingText.length || remainingText[i] === ' ' || i === searchEnd) {
+              chunkSize = i + 1;
+              break;
+            }
+          }
+          
+          if (chunkSize === 0) {
+            chunkSize = Math.min(20, remainingText.length);
+          }
+        }
+        
+        // Ограничиваем максимальный размер чанка
+        chunkSize = Math.min(chunkSize, remainingText.length);
+        
+        // Динамическая скорость: быстрее в начале, медленнее в конце
+        const progress = displayText.length / msg.text.length;
+        let speed = 20; // Базовая скорость (мс)
+        
+        if (progress < 0.3) {
+          speed = 15; // Быстрее в начале
+        } else if (progress > 0.7) {
+          speed = 35; // Медленнее в конце для драматизма
+        }
+        
+        // Добавляем небольшую случайность для естественности
+        const randomVariation = Math.random() * 10 - 5; // ±5 мс
+        const finalSpeed = Math.max(10, speed + randomVariation);
+        
         const timeout = setTimeout(() => {
-          setDisplayText(msg.text.slice(0, displayText.length + 10));
-        }, 10);
+          setDisplayText(msg.text.slice(0, displayText.length + chunkSize));
+        }, finalSpeed);
+        
         return () => clearTimeout(timeout);
       }
     } else if (msg.role === 'assistant') {
@@ -36,22 +180,39 @@ export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) 
     }
   }, [msg.text, msg.role, displayText.length]);
 
-  // При открытии старого чата - плавное появление текста
+  // При открытии старого чата - плавное появление текста предложениями
   useEffect(() => {
     if (msg.role === 'assistant' && msg.text !== '[stopped]' && displayText === '') {
-      let currentIndex = 0;
-      const textLength = msg.text.length;
-      const speed = Math.max(5, Math.min(20, Math.floor(textLength / 50))); // Адаптивная скорость
+      // Небольшая задержка перед началом анимации для более естественного вида
+      const startDelay = setTimeout(() => {
+        const sentences = splitIntoSentences(msg.text);
+        let currentSentenceIndex = 0;
+        let currentText = '';
+        
+        const animateSentences = () => {
+          if (currentSentenceIndex < sentences.length) {
+            currentText += (currentText ? ' ' : '') + sentences[currentSentenceIndex];
+            setDisplayText(currentText);
+            currentSentenceIndex++;
+            
+            // Задержка между предложениями зависит от длины предложения
+            // Более длинные предложения требуют больше времени для "чтения"
+            const sentence = sentences[currentSentenceIndex - 1];
+            const wordCount = sentence.split(/\s+/).length;
+            const baseDelay = Math.max(80, Math.min(400, wordCount * 60));
+            
+            // Добавляем небольшую случайную вариацию для естественности
+            const randomVariation = Math.random() * 40 - 20; // ±20 мс
+            const delay = Math.max(60, baseDelay + randomVariation);
+            
+            setTimeout(animateSentences, delay);
+          }
+        };
+        
+        animateSentences();
+      }, 200); // Начальная задержка 200 мс
       
-      const animateText = () => {
-        if (currentIndex < textLength) {
-          setDisplayText(msg.text.slice(0, currentIndex + 1));
-          currentIndex++;
-          setTimeout(animateText, 20); // Более плавная анимация
-        }
-      };
-      
-      animateText();
+      return () => clearTimeout(startDelay);
     }
   }, [msg.id]); // Запускаем только при первом рендере сообщения
 
@@ -74,15 +235,19 @@ export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) 
         <div className="flex gap-2 items-center">
           <div className="flex gap-1">
             {[0,1,2].map(i => (
-              <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" 
-                style={{ background: '#1a1a1a', animationDelay: `${i * 0.2}s` }} 
+              <div key={i} className="w-2 h-2 rounded-full animate-pulse" 
+                style={{ 
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  animationDelay: `${i * 0.15}s`,
+                  animationDuration: '1.5s'
+                }} 
               />
             ))}
           </div>
-          <span className="text-[10px] text-gray-500">анализирую...</span>
+          <span className="text-xs text-gray-600 font-medium">нейросеть думает...</span>
         </div>
         {(msg as any).source && (
-          <div className="text-[9px] text-gray-500 italic ml-0.5">Источник: {(msg as any).source}</div>
+          <div className="text-[10px] text-gray-500 italic ml-0.5">Источник: {(msg as any).source}</div>
         )}
       </div>
     </div>
@@ -119,11 +284,26 @@ export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) 
     return (
       <div className="flex justify-start mb-4 animate-fade-in">
         <div className="max-w-[85%]">
-          <div className="text-sm text-blue-600 leading-relaxed break-words whitespace-pre-wrap">
+          <div className="text-sm text-gray-800 leading-relaxed break-words whitespace-pre-wrap">
             {isStopped ? (
               <span className="italic text-gray-400">Запрос остановлен</span>
             ) : (
-              displayText.split('\n').map((line, i) => <p key={i} className={i > 0 ? 'mt-2' : ''}>{clean(line)}</p>)
+              displayText.split('\n').map((line, i) => {
+                const cleanedLine = clean(line);
+                // Подчеркиваем важные части текста синим фоном
+                const parts = cleanedLine.split(/(\*\*[^*]+\*\*)/g);
+                return (
+                  <p key={i} className={i > 0 ? 'mt-2' : ''}>
+                    {parts.map((part, j) => {
+                      if (part.startsWith('**') && part.endsWith('**')) {
+                        const text = part.slice(2, -2);
+                        return <span key={j} className="bg-blue-50 px-1 py-0.5 rounded border border-blue-100">{text}</span>;
+                      }
+                      return <span key={j}>{part}</span>;
+                    })}
+                  </p>
+                );
+              })
             )}
           </div>
           {isMed && !isStopped && <p className="text-[10px] text-gray-500 mt-2 border-l-2 border-gray-200 pl-2">Нейросеть не врач, она может ошибаться. Обратитесь к специалисту.</p>}

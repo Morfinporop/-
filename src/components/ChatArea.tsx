@@ -74,9 +74,14 @@ export default function ChatArea({ chat, onSend, user, isGenerating, onStop }: P
           <div className="flex items-center gap-2">
             {editId && <button onClick={() => { setEditId(null); setInput(''); }} className="text-xs text-gray-600 hover:text-gray-800 px-3 py-1.5 rounded-xl hover:bg-gray-100 transition-colors">Отменить</button>}
             {isGenerating && !editId ? (
-              <button onClick={onStop} className="w-10 h-10 rounded-full bg-blue-600"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+              <div className="relative">
+                <button onClick={onStop} className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center relative overflow-hidden">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 animate-pulse"></div>
+                </button>
+              </div>
             ) : (
-              <button onClick={send} disabled={!hasText && !media.length} className="w-10 h-10 rounded-full bg-blue-600 transition-opacity disabled:opacity-25 disabled:cursor-default"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/><path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+              <button onClick={send} disabled={!hasText && !media.length} className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center transition-opacity disabled:opacity-25 disabled:cursor-default"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/><path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
             )}
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { User } from '../types';
 
 interface NewsPost {
   id: string;
@@ -6,12 +7,6 @@ interface NewsPost {
   userName: string;
   userAvatar: string | null;
   createdAt: number;
-}
-
-const STORAGE_KEY = 'moai_news';
-
-function loadNews(): NewsPost[] {
-  try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; } catch { return []; }
 }
 
 function timeAgo(ts: number): string {
@@ -24,22 +19,97 @@ function timeAgo(ts: number): string {
   return `${Math.floor(hrs / 24)} дн назад`;
 }
 
-export default function NewsFeed() {
+interface Props {
+  user?: User | null;
+}
+
+export default function NewsFeed({ user }: Props) {
   const [news, setNews] = useState<NewsPost[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadNewsFromDB = async () => {
+    try {
+      const res = await fetch('/api/load-news');
+      const data = await res.json();
+      if (data.ok && data.news) {
+        setNews(data.news);
+      } else {
+        // Fallback to localStorage
+        try {
+          const r = localStorage.getItem('moai_news');
+          if (r) setNews(JSON.parse(r));
+        } catch {}
+      }
+    } catch (error) {
+      // Fallback to localStorage
+      try {
+        const r = localStorage.getItem('moai_news');
+        if (r) setNews(JSON.parse(r));
+      } catch {}
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteNews = async (newsId: string) => {
+    if (!user || user.email !== 'energoferon41@gmail.com') {
+      alert('Только администратор может удалять новости');
+      return;
+    }
+
+    if (confirm('Удалить эту новость?')) {
+      try {
+        const res = await fetch('/api/delete-news', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newsId, userEmail: user.email })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          loadNewsFromDB();
+        } else {
+          alert(data.error || 'Ошибка удаления');
+        }
+      } catch (error) {
+        alert('Ошибка удаления');
+      }
+    }
+  };
 
   useEffect(() => {
-    setNews(loadNews());
-    const interval = setInterval(() => setNews(loadNews()), 3000);
+    loadNewsFromDB();
+    const interval = setInterval(loadNewsFromDB, 10000); // Обновляем каждые 10 секунд
     return () => clearInterval(interval);
   }, []);
+
+  const isAdmin = user?.email === 'energoferon41@gmail.com';
 
   return (
     <div className="flex-1 flex flex-col h-full">
       <div className="flex-1 overflow-y-auto p-6" style={{ maxWidth: '700px', margin: '0 auto', width: '100%' }}>
-        {news.length > 0 && (
+        {loading ? (
+          <div className="flex justify-center items-center h-40">
+            <div className="flex gap-2">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-2 h-2 rounded-full animate-bounce bg-gray-400" style={{ animationDelay: `${i * 0.2}s` }} />
+              ))}
+            </div>
+          </div>
+        ) : news.length > 0 ? (
           <div className="flex flex-col gap-3">
             {news.map(n => (
-              <div key={n.id} className="rounded-xl p-4 animate-fade-in" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.06)' }}>
+              <div key={n.id} className="rounded-xl p-4 animate-fade-in relative group" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.06)' }}>
+                {isAdmin && (
+                  <button
+                    onClick={() => deleteNews(n.id)}
+                    className="absolute top-3 right-3 z-10 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Удалить (только для администратора)"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                )}
                 <div className="flex items-center gap-2 mb-2">
                   {n.userAvatar ? <img src={n.userAvatar} alt="" className="w-6 h-6 rounded-full object-cover" /> : <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center border border-black/5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#aaa" strokeWidth="1.6"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="#aaa" strokeWidth="1.6" strokeLinecap="round"/></svg></div>}
                   <span className="text-xs font-medium text-gray-600">{n.userName}</span>
@@ -49,10 +119,20 @@ export default function NewsFeed() {
               </div>
             ))}
           </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-40 text-gray-500">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p className="mt-2 text-sm">Нет новостей</p>
+          </div>
         )}
       </div>
       <div className="flex-shrink-0 py-4 text-center">
-        <p className="text-[11px] text-text-muted">Чтоб добавить Новости напишите <span className="font-bold text-gray-400">"Загрузи в новости"</span></p>
+        <p className="text-[11px] text-gray-500">Чтобы добавить новости напишите <span className="font-bold text-gray-600">"загрузи в новости"</span></p>
+        {isAdmin && (
+          <p className="text-[10px] text-red-500 mt-1">Вы администратор: можете удалять новости</p>
+        )}
       </div>
     </div>
   );

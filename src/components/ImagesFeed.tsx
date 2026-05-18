@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
+import { User } from '../types';
 
 interface ImagePost {
   id: string;
@@ -11,10 +12,6 @@ interface ImagePost {
 
 const STORAGE_KEY = 'moai_images';
 
-function loadImages(): ImagePost[] {
-  try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; } catch { return []; }
-}
-
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60000);
@@ -25,22 +22,97 @@ function timeAgo(ts: number): string {
   return `${Math.floor(hrs / 24)} дн назад`;
 }
 
-export default function ImagesFeed() {
+interface Props {
+  user?: User | null;
+}
+
+export default function ImagesFeed({ user }: Props) {
   const [images, setImages] = useState<ImagePost[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadImagesFromDB = async () => {
+    try {
+      const res = await fetch('/api/load-images');
+      const data = await res.json();
+      if (data.ok && data.images) {
+        setImages(data.images);
+      } else {
+        // Fallback to localStorage
+        try {
+          const r = localStorage.getItem(STORAGE_KEY);
+          if (r) setImages(JSON.parse(r));
+        } catch {}
+      }
+    } catch (error) {
+      // Fallback to localStorage
+      try {
+        const r = localStorage.getItem(STORAGE_KEY);
+        if (r) setImages(JSON.parse(r));
+      } catch {}
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteImage = async (imageId: string) => {
+    if (!user || user.email !== 'energoferon41@gmail.com') {
+      alert('Только администратор может удалять картинки');
+      return;
+    }
+
+    if (confirm('Удалить эту картинку?')) {
+      try {
+        const res = await fetch('/api/delete-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageId, userEmail: user.email })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          loadImagesFromDB();
+        } else {
+          alert(data.error || 'Ошибка удаления');
+        }
+      } catch (error) {
+        alert('Ошибка удаления');
+      }
+    }
+  };
 
   useEffect(() => {
-    setImages(loadImages());
-    const interval = setInterval(() => setImages(loadImages()), 3000);
+    loadImagesFromDB();
+    const interval = setInterval(loadImagesFromDB, 10000); // Обновляем каждые 10 секунд
     return () => clearInterval(interval);
   }, []);
+
+  const isAdmin = user?.email === 'energoferon41@gmail.com';
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       <div className="flex-1 overflow-y-auto p-6" style={{ maxWidth: '900px', margin: '0 auto', width: '100%' }}>
-        {images.length > 0 ? (
-          <div className="grid grid-cols-2 gap-4">
+        {loading ? (
+          <div className="flex justify-center items-center h-40">
+            <div className="flex gap-2">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-2 h-2 rounded-full animate-bounce bg-gray-400" style={{ animationDelay: `${i * 0.2}s` }} />
+              ))}
+            </div>
+          </div>
+        ) : images.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {images.map(img => (
-              <div key={img.id} className="rounded-xl overflow-hidden animate-fade-in" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div key={img.id} className="rounded-xl overflow-hidden animate-fade-in relative group" style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                {isAdmin && (
+                  <button
+                    onClick={() => deleteImage(img.id)}
+                    className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Удалить (только для администратора)"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                )}
                 <img src={img.imageUrl} alt="" className="w-full h-48 object-cover" loading="lazy" />
                 <div className="p-3">
                   <div className="flex items-center gap-2 mb-1.5">
@@ -59,10 +131,22 @@ export default function ImagesFeed() {
               </div>
             ))}
           </div>
-        ) : null}
+        ) : (
+          <div className="flex flex-col items-center justify-center h-40 text-gray-500">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <p className="mt-2 text-sm">Нет загруженных картинок</p>
+          </div>
+        )}
       </div>
       <div className="flex-shrink-0 py-4 bg-transparent text-center border-t border-gray-100/50">
-        <p className="text-[11px] text-text-muted">Чтоб добавить изображение напишите <span className="font-bold text-gray-400">"Загрузи в картинки"</span></p>
+        <p className="text-[11px] text-gray-500">Чтобы добавить изображение напишите <span className="font-bold text-gray-600">"загрузи в картинки"</span></p>
+        {isAdmin && (
+          <p className="text-[10px] text-red-500 mt-1">Вы администратор: можете удалять картинки</p>
+        )}
       </div>
     </div>
   );

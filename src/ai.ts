@@ -1,7 +1,8 @@
 const TEXT_MODELS = [
-  'inclusionai/ring-2.6-1t:free',
-  'baidu/cobuddy:free',
-  'poolside/laguna-xs.2:free'
+  'qwen/qwen-2.5-32b-instruct:free',      // Быстрая и качественная модель
+  'google/gemma-2-9b-it:free',           // Легкая и быстрая
+  'microsoft/phi-3.5-mini-instruct:free', // Очень быстрая
+  'meta-llama/llama-3.2-3b-instruct:free' // Самая быстрая
 ];
 
 const VISION_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
@@ -79,18 +80,58 @@ export async function askAnoAI(
     ...history
   ];
 
-  while (true) {
+  const MAX_RETRIES = 2; // Максимум 2 попытки
+  const REQUEST_TIMEOUT = 30000; // 30 секунд таймаут на запрос
+  let retryCount = 0;
+
+  while (retryCount < MAX_RETRIES) {
     if (signal.aborted) { onResult(thinkingId, "[stopped]"); return; }
     
     const models = hasMedia ? [VISION_MODEL, ...TEXT_MODELS] : TEXT_MODELS;
+    
     for (const model of models) {
+      if (signal.aborted) { onResult(thinkingId, "[stopped]"); return; }
+      
       try {
+        // Создаем таймаут для каждого запроса
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT);
+        
+        // Объединяем сигналы: пользовательский + таймаут
+        const combinedSignal = (() => {
+          const controller = new AbortController();
+          
+          signal.addEventListener('abort', () => controller.abort());
+          timeoutController.signal.addEventListener('abort', () => controller.abort());
+          
+          return controller.signal;
+        })();
+
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST', headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-          signal,
-          body: JSON.stringify({ model, messages: msgs, max_tokens: 1000 })
+          method: 'POST', 
+          headers: { 
+            'Authorization': `Bearer ${key}`, 
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://moai-studio.app',
+            'X-Title': 'MoAI Studio'
+          },
+          signal: combinedSignal,
+          body: JSON.stringify({ 
+            model, 
+            messages: msgs, 
+            max_tokens: 800, // Уменьшим для скорости
+            temperature: 0.7,
+            stream: false
+          })
         });
-        if (!res.ok) continue;
+        
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) {
+          console.log(`Модель ${model} не ответила: ${res.status}`);
+          continue; // Пробуем следующую модель
+        }
+        
         const data = await res.json();
         const text = data?.choices?.[0]?.message?.content;
 
@@ -107,9 +148,28 @@ export async function askAnoAI(
           return;
         }
       } catch (e: any) { 
-        if (e.name === 'AbortError') { onResult(thinkingId, "[stopped]"); return; } 
+        if (e.name === 'AbortError') { 
+          if (signal.aborted) {
+            onResult(thinkingId, "[stopped]"); 
+          } else {
+            console.log(`Таймаут для модели ${model}`);
+          }
+          continue; // Пробуем следующую модель
+        }
+        console.log(`Ошибка для модели ${model}:`, e.message);
       }
     }
-    await new Promise(r => setTimeout(r, 1000));
+    
+    retryCount++;
+    if (retryCount < MAX_RETRIES && !signal.aborted) {
+      // Ждем перед следующей попыткой, но меньше
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  
+  // Если все попытки исчерпаны
+  if (!signal.aborted) {
+    onResult(thinkingId, "Извините, нейросеть временно недоступна. Попробуйте позже.");
+    currentAbortController = null;
   }
 }
