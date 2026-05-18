@@ -1,11 +1,9 @@
 const TEXT_MODELS = [
-  'qwen/qwen-2.5-32b-instruct:free',      // Быстрая и качественная модель
-  'google/gemma-2-9b-it:free',           // Легкая и быстрая
-  'microsoft/phi-3.5-mini-instruct:free', // Очень быстрая
-  'meta-llama/llama-3.2-3b-instruct:free' // Самая быстрая
+  'google/gemma-2-9b-it:free',           // Надежная и быстрая модель
+  'meta-llama/llama-3.2-3b-instruct:free' // Самая быстрая и стабильная
 ];
 
-const VISION_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
+const VISION_MODEL = 'google/gemini-flash-1.5:free'; // Более надежная vision модель
 
 const getKey = (): string => {
   const a = [115,107,45,111,114,45,118,49,45];
@@ -80,96 +78,77 @@ export async function askAnoAI(
     ...history
   ];
 
-  const MAX_RETRIES = 2; // Максимум 2 попытки
-  const REQUEST_TIMEOUT = 30000; // 30 секунд таймаут на запрос
-  let retryCount = 0;
-
-  while (retryCount < MAX_RETRIES) {
-    if (signal.aborted) { onResult(thinkingId, "[stopped]"); return; }
-    
-    const models = hasMedia ? [VISION_MODEL, ...TEXT_MODELS] : TEXT_MODELS;
-    
-    for (const model of models) {
-      if (signal.aborted) { onResult(thinkingId, "[stopped]"); return; }
-      
-      try {
-        // Создаем таймаут для каждого запроса
-        const timeoutController = new AbortController();
-        const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT);
-        
-        // Объединяем сигналы: пользовательский + таймаут
-        const combinedSignal = (() => {
-          const controller = new AbortController();
-          
-          signal.addEventListener('abort', () => controller.abort());
-          timeoutController.signal.addEventListener('abort', () => controller.abort());
-          
-          return controller.signal;
-        })();
-
-        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST', 
-          headers: { 
-            'Authorization': `Bearer ${key}`, 
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://moai-studio.app',
-            'X-Title': 'MoAI Studio'
-          },
-          signal: combinedSignal,
-          body: JSON.stringify({ 
-            model, 
-            messages: msgs, 
-            max_tokens: 800, // Уменьшим для скорости
-            temperature: 0.7,
-            stream: false
-          })
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!res.ok) {
-          console.log(`Модель ${model} не ответила: ${res.status}`);
-          continue; // Пробуем следующую модель
-        }
-        
-        const data = await res.json();
-        const text = data?.choices?.[0]?.message?.content;
-
-        if (text && !signal.aborted) {
-          // Вторая проверка - если ИИ сам определил запрещенку или модель выдала отказ
-          if (BAD.test(text) || text.includes("Недоступный контент")) {
-             onResult(thinkingId, "Недоступный контент!");
-             currentAbortController = null;
-             return;
-          }
-          history.push({ role: 'assistant', content: text });
-          onResult(thinkingId, text);
-          currentAbortController = null;
-          return;
-        }
-      } catch (e: any) { 
-        if (e.name === 'AbortError') { 
-          if (signal.aborted) {
-            onResult(thinkingId, "[stopped]"); 
-          } else {
-            console.log(`Таймаут для модели ${model}`);
-          }
-          continue; // Пробуем следующую модель
-        }
-        console.log(`Ошибка для модели ${model}:`, e.message);
-      }
-    }
-    
-    retryCount++;
-    if (retryCount < MAX_RETRIES && !signal.aborted) {
-      // Ждем перед следующей попыткой, но меньше
-      await new Promise(r => setTimeout(r, 500));
-    }
-  }
+  const REQUEST_TIMEOUT = 20000; // 20 секунд таймаут на запрос
   
-  // Если все попытки исчерпаны
-  if (!signal.aborted) {
-    onResult(thinkingId, "Извините, нейросеть временно недоступна. Попробуйте позже.");
+  // Используем только первую модель из списка для простоты
+  const model = hasMedia ? VISION_MODEL : TEXT_MODELS[0];
+  
+  try {
+    // Создаем таймаут для запроса
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT);
+    
+    // Объединяем сигналы: пользовательский + таймаут
+    const controller = new AbortController();
+    signal.addEventListener('abort', () => controller.abort());
+    timeoutController.signal.addEventListener('abort', () => controller.abort());
+
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST', 
+      headers: { 
+        'Authorization': `Bearer ${key}`, 
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://moai-studio.app',
+        'X-Title': 'MoAI Studio'
+      },
+      signal: controller.signal,
+      body: JSON.stringify({ 
+        model, 
+        messages: msgs, 
+        max_tokens: 600, // Еще меньше для скорости
+        temperature: 0.7,
+        stream: false
+      })
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!res.ok) {
+      console.log(`Модель ${model} не ответила: ${res.status}`);
+      onResult(thinkingId, "Нейросеть временно недоступна. Попробуйте еще раз.");
+      currentAbortController = null;
+      return;
+    }
+    
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+
+    if (text && !signal.aborted) {
+      // Вторая проверка - если ИИ сам определил запрещенку или модель выдала отказ
+      if (BAD.test(text) || text.includes("Недоступный контент")) {
+         onResult(thinkingId, "Недоступный контент!");
+         currentAbortController = null;
+         return;
+      }
+      history.push({ role: 'assistant', content: text });
+      onResult(thinkingId, text);
+      currentAbortController = null;
+      return;
+    } else {
+      onResult(thinkingId, "Нейросеть не ответила. Попробуйте еще раз.");
+      currentAbortController = null;
+    }
+  } catch (e: any) { 
+    if (e.name === 'AbortError') { 
+      if (signal.aborted) {
+        onResult(thinkingId, "[stopped]"); 
+      } else {
+        onResult(thinkingId, "Таймаут запроса. Попробуйте еще раз.");
+      }
+      return;
+    }
+    console.log(`Ошибка запроса:`, e.message);
+    onResult(thinkingId, "Ошибка соединения. Проверьте интернет.");
     currentAbortController = null;
   }
 }

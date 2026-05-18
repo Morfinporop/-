@@ -119,14 +119,7 @@ export default function NewsFeed({ user }: Props) {
               </div>
             ))}
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-40 text-gray-500">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <p className="mt-2 text-sm">Нет новостей</p>
-          </div>
-        )}
+        ) : null}
       </div>
       <div className="flex-shrink-0 py-4 text-center">
         <p className="text-[11px] text-gray-500">Чтобы добавить новости напишите <span className="font-bold text-gray-600">"загрузи в новости"</span></p>

@@ -131,16 +131,7 @@ export default function ImagesFeed({ user }: Props) {
               </div>
             ))}
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-40 text-gray-500">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
-            </svg>
-            <p className="mt-2 text-sm">Нет загруженных картинок</p>
-          </div>
-        )}
+        ) : null}
       </div>
       <div className="flex-shrink-0 py-4 bg-transparent text-center border-t border-gray-100/50">
         <p className="text-[11px] text-gray-500">Чтобы добавить изображение напишите <span className="font-bold text-gray-600">"загрузи в картинки"</span></p>
