@@ -111,8 +111,36 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Все запросы перенаправляем на index.html для React Router
-// В Express 5.x используется синтаксис '*path' для wildcard
+// Сохранение правил
+app.post('/api/save-rules', async (req, res) => {
+  const { rules } = req.body;
+  if (pool) {
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS rules (id SERIAL PRIMARY KEY, data JSONB)`);
+      await pool.query(`DELETE FROM rules`);
+      await pool.query(`INSERT INTO rules (data) VALUES ($1)`, [JSON.stringify(rules)]);
+      res.json({ ok: true });
+    } catch (err) { res.status(500).json({ ok: false }); }
+  } else {
+    res.json({ ok: true });
+  }
+});
+
+// Обновление пользователя
+app.post('/api/update-user', async (req, res) => {
+  const { email, name, avatar } = req.body;
+  if (pool && email) {
+    try {
+      if (name) await pool.query('UPDATE users SET name = $1 WHERE email = $2', [name, email.toLowerCase()]);
+      if (avatar) await pool.query('UPDATE users SET avatar = $1 WHERE email = $2', [avatar, email.toLowerCase()]);
+      res.json({ ok: true });
+    } catch (err) { res.status(500).json({ ok: false }); }
+  } else {
+    res.json({ ok: true });
+  }
+});
+
+// Все запросы перенаправляем на index.html
 app.get('*path', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });

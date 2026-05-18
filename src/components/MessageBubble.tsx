@@ -1,164 +1,110 @@
-import { useState } from 'react';
+import { useState, useEffect, memo, useContext } from 'react';
 import { Message } from '../types';
+import { getMessageLike, setMessageLike } from '../store';
 
-interface Props {
-  msg: Message;
-  onEditStart: (msg: Message) => void;
+interface Props { 
+  msg: Message; 
+  onEditStart: (msg: Message) => void; 
+  chatId?: string;
 }
 
-function cleanMarkdown(text: string): string {
-  return text.replace(/\*\*([^*]+)\*\*/g, '$1');
-}
+const clean = (t: string) => t.replace(/\*\*([^*]+)\*\*/g, '$1');
 
-function renderHighlighted(text: string, highlights: string[]): React.ReactNode {
-  const cleanText = cleanMarkdown(text);
-  
-  if (!highlights || highlights.length === 0) return cleanText;
-
-  let parts: { text: string; hl: boolean }[] = [{ text: cleanText, hl: false }];
-
-  for (let phrase of highlights) {
-    phrase = cleanMarkdown(phrase);
-    if (!phrase.trim()) continue;
-    const next: typeof parts = [];
-    for (const part of parts) {
-      if (part.hl) { next.push(part); continue; }
-      const idx = part.text.toLowerCase().indexOf(phrase.toLowerCase());
-      if (idx === -1) { next.push(part); continue; }
-      if (idx > 0) next.push({ text: part.text.slice(0, idx), hl: false });
-      next.push({ text: part.text.slice(idx, idx + phrase.length), hl: true });
-      const after = part.text.slice(idx + phrase.length);
-      if (after) next.push({ text: after, hl: false });
+export default memo(function MessageBubble({ msg, onEditStart, chatId }: Props) {
+  const [displayText, setDisplayText] = useState(msg.role === 'assistant' ? '' : msg.text);
+  const [liked, setLiked] = useState<boolean | null>(() => {
+    if (chatId && msg.role === 'assistant') {
+      return getMessageLike(chatId, msg.id);
     }
-    parts = next;
-  }
-
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.hl ? (
-          <span
-            key={i}
-            style={{
-              background: 'rgba(66,133,244,0.2)',
-              borderRadius: '4px',
-              padding: '1px 4px',
-            }}
-          >
-            {p.text}
-          </span>
-        ) : (
-          <span key={i}>{p.text}</span>
-        )
-      )}
-    </>
-  );
-}
-
-function isMedical(userText: string): boolean {
-  const keywords = /боль|болит|болел|вирус|инфекц|температур|кашель|насморк|препарат|лекарство|таблетк|врач|доктор|лечени|больниц|симптом|диагноз|медицин|отит|синусит|аллерги|тошнот|рвот|диаре|голов|перелом|ушиб|давлени|сердц|легк|желуд|печень|почк|кров|анализ/i;
-  return keywords.test(userText);
-}
-
-function getEmergencyNumber(): string {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (tz.includes('America')) return '911';
-  if (tz.includes('Europe') || tz.includes('Asia') || tz.includes('Africa')) return '112';
-  return '911 или 112';
-}
-
-export default function MessageBubble({ msg, onEditStart }: Props) {
+    return null;
+  });
+  const [collapsed, setCollapsed] = useState(msg.role === 'user' && msg.text.length > 200);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(msg.role === 'user' && msg.text.length > 150);
-  const [liked, setLiked] = useState<boolean | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  if (msg.role === 'thinking') {
-    if (msg.isGenerating) {
-      return (
-        <div className="flex justify-start mb-5">
-          <div
-            className="w-48 h-48 rounded-xl flex items-center justify-center"
-            style={{
-              background: 'rgba(255,255,255,0.3)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255,255,255,0.5)',
-            }}
-          >
-            <div
-              className="w-12 h-12 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent"
-              style={{
-                animation: 'spin 1s linear infinite',
-              }}
-            />
-          </div>
-        </div>
-      );
+  useEffect(() => {
+    if (msg.role === 'assistant' && msg.text !== '[stopped]') {
+      // Для новых сообщений - плавное появление
+      if (displayText.length < msg.text.length) {
+        const timeout = setTimeout(() => {
+          setDisplayText(msg.text.slice(0, displayText.length + 10));
+        }, 10);
+        return () => clearTimeout(timeout);
+      }
+    } else if (msg.role === 'assistant') {
+      setDisplayText(msg.text);
     }
-    return (
-      <div className="flex justify-start mb-5">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <ThinkingDots />
-          <span className="text-xs text-gray-400">думает...</span>
+  }, [msg.text, msg.role, displayText.length]);
+
+  // При открытии старого чата - плавное появление текста
+  useEffect(() => {
+    if (msg.role === 'assistant' && msg.text !== '[stopped]' && displayText === '') {
+      let currentIndex = 0;
+      const textLength = msg.text.length;
+      const speed = Math.max(5, Math.min(20, Math.floor(textLength / 50))); // Адаптивная скорость
+      
+      const animateText = () => {
+        if (currentIndex < textLength) {
+          setDisplayText(msg.text.slice(0, currentIndex + 1));
+          currentIndex++;
+          setTimeout(animateText, 20); // Более плавная анимация
+        }
+      };
+      
+      animateText();
+    }
+  }, [msg.id]); // Запускаем только при первом рендере сообщения
+
+  const handleLike = (value: boolean | null) => {
+    setLiked(value);
+    if (chatId) {
+      setMessageLike(chatId, msg.id, value);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(clean(msg.text));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 5000);
+  };
+
+  if (msg.role === 'thinking') return (
+    <div className="flex justify-start mb-3 animate-fade-in">
+      <div className="flex flex-col gap-1 px-3 py-1">
+        <div className="flex gap-2 items-center">
+          <div className="flex gap-1">
+            {[0,1,2].map(i => (
+              <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" 
+                style={{ background: '#1a1a1a', animationDelay: `${i * 0.2}s` }} 
+              />
+            ))}
+          </div>
+          <span className="text-[10px] text-text-muted">анализирую...</span>
         </div>
+        {(msg as any).source && (
+          <div className="text-[9px] text-text-muted italic ml-0.5">Источник: {(msg as any).source}</div>
+        )}
       </div>
-    );
-  }
+    </div>
+  );
 
   if (msg.role === 'user') {
-    const displayText = collapsed ? msg.text.slice(0, 150) + '...' : msg.text;
-    
     return (
-      <div className="flex justify-end mb-5">
-        <div className="relative flex flex-col items-end" style={{ maxWidth: '70%' }}>
-          <div className="relative">
-            <div
-              className="px-5 py-3 rounded-[20px] text-sm leading-relaxed"
-              style={{
-                background: 'linear-gradient(135deg, #ffffff 0%, #f4f4f4 100%)',
-                border: '1px solid rgba(0,0,0,0.07)',
-                boxShadow: '0 2px 14px rgba(0,0,0,0.05)',
-                filter: msg.blocked ? 'blur(7px)' : 'none',
-                userSelect: msg.blocked ? 'none' : 'auto',
-                paddingBottom: '34px',
-                paddingRight: msg.text.length > 150 ? '90px' : '80px',
-                paddingLeft: '20px',
-                wordBreak: 'break-word',
-                minWidth: '120px',
-                color: '#1f2937',
-                textAlign: 'right',
-                direction: 'rtl'
-              }}
-            >
-              <span style={{ direction: 'ltr', display: 'inline-block' }}>{displayText}</span>
+      <div className="flex justify-end mb-3">
+        <div className="flex flex-col items-end max-w-[85%]">
+          {msg.media?.length && (
+            <div className="flex flex-wrap gap-2 mb-2 justify-end">
+              {msg.media.map((f, i) => <img key={i} src={f} loading="lazy" className="max-w-[200px] max-h-[200px] object-cover rounded-xl shadow-sm" />)}
             </div>
-            <div
-              className="absolute bottom-2.5 right-3 flex items-center gap-2"
-              style={{ pointerEvents: msg.blocked ? 'none' : 'auto' }}
-            >
-              {!msg.blocked && msg.text.length > 150 && (
-                <button
-                  onClick={() => setCollapsed(!collapsed)}
-                  className="transition-transform"
-                  style={{ transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
-                >
-                  <ChevronDown />
-                </button>
-              )}
-              {!msg.blocked && (
-                <button
-                  onClick={() => onEditStart(msg)}
-                  className="text-xs transition-colors hover:text-gray-600"
-                  style={{
-                    color: 'rgba(0,0,0,0.3)',
-                    fontSize: '10px',
-                    fontWeight: 500,
-                    letterSpacing: '0.01em',
-                  }}
-                >
-                  изменить
-                </button>
-              )}
-              <span style={{ color: 'rgba(0,0,0,0.25)', fontSize: '10px' }}>{msg.time}</span>
+          )}
+          <div className="relative group">
+            <div className="px-4 py-2.5 rounded-2xl text-sm leading-relaxed bg-gradient-to-r from-gray-50 to-white border border-gray-200 shadow-sm text-gray-800 pb-7 transition-all" style={{ minWidth: '100px', width: 'fit-content' }}>
+              <span style={{ direction: 'ltr', display: 'inline-block', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{collapsed ? msg.text.slice(0, 200) + '...' : msg.text}</span>
+            </div>
+            <div className="absolute bottom-1.5 right-3 flex items-center gap-2">
+              {!msg.blocked && msg.text.length > 200 && <button onClick={() => setCollapsed(!collapsed)} className="p-0.5 hover:bg-gray-100 rounded transition-colors"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
+              {!msg.blocked && <button onClick={() => onEditStart(msg)} className="text-[10px] text-gray-600 hover:text-gray-800 font-medium">изменить</button>}
+              <span className="text-[9px] text-gray-400 font-mono">{msg.time}</span>
             </div>
           </div>
         </div>
@@ -167,229 +113,42 @@ export default function MessageBubble({ msg, onEditStart }: Props) {
   }
 
   if (msg.role === 'assistant') {
-    const userMsgIdx = (window as any).__currentChatMessages?.findIndex((m: Message) => m.id === msg.id);
-    const userMsg = userMsgIdx > 0 ? (window as any).__currentChatMessages?.[userMsgIdx - 1] : null;
-    const showMedicalWarning = userMsg && userMsg.role === 'user' && isMedical(userMsg.text);
-
-    if (msg.text.startsWith('data:image') || msg.text.startsWith('data:video')) {
-      return (
-        <div className="flex justify-start mb-5">
-          <div style={{ maxWidth: '75%' }}>
-            {msg.text.startsWith('data:image') ? (
-              <img src={msg.text} alt="Generated" className="max-w-full rounded-xl" />
-            ) : (
-              <video src={msg.text} controls className="max-w-full rounded-xl" />
-            )}
-          </div>
-        </div>
-      );
-    }
-
+    const isStopped = msg.text === '[stopped]';
+    const isMed = /врач|доктор|лекарство|таблетк|капл|мазь|терапевт|симптомы/i.test(msg.text);
+    
     return (
-      <div className="flex justify-start mb-5">
-        <div style={{ maxWidth: '75%' }}>
-          <div
-            className="text-sm text-gray-700 leading-relaxed mb-2"
-            style={{ wordBreak: 'break-word', background: 'transparent' }}
-          >
-            {renderHighlighted(msg.text, msg.highlights || [])}
-          </div>
-          {showMedicalWarning && (
-            <p className="text-xs text-gray-400 mb-2 mt-1">
-              Нейросеть не врач, она может писать неправильно. Обратитесь в ближайшую больницу или позвоните {getEmergencyNumber()}.
-            </p>
-          )}
-          <div className="flex items-center gap-2 relative">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(cleanMarkdown(msg.text));
-              }}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-              title="Скопировать"
-            >
-              <CopyIcon />
-            </button>
-            <button
-              onClick={() => {
-                const newVal = liked === true ? null : true;
-                setLiked(newVal);
-                if (newVal === true) {
-                  console.log('👍 Feedback: Helpful response', { messageId: msg.id, text: msg.text.slice(0, 100) });
-                }
-              }}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-              title="Нравится"
-            >
-              <LikeIcon filled={liked === true} />
-            </button>
-            <button
-              onClick={() => {
-                const newVal = liked === false ? null : false;
-                setLiked(newVal);
-                if (newVal === false) {
-                  console.log('👎 Feedback: Not helpful response', { messageId: msg.id, text: msg.text.slice(0, 100) });
-                }
-              }}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-              title="Не нравится"
-            >
-              <DislikeIcon filled={liked === false} />
-            </button>
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-            >
-              <DotsIcon />
-            </button>
-            {menuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setMenuOpen(false)}
-                />
-                <div
-                  className="absolute left-0 top-8 z-50 rounded-xl shadow-xl py-1 bg-white border border-gray-200"
-                  style={{ minWidth: '160px' }}
-                >
-                  <button
-                    onClick={() => {
-                      const cleanText = cleanMarkdown(msg.text);
-                      const blob = new Blob([cleanText], { type: 'text/plain;charset=utf-8' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `answer-${Date.now()}.txt`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
-                  >
-                    Экспортировать в TXT
-                  </button>
-                  <button
-                    onClick={() => {
-                      const cleanText = cleanMarkdown(msg.text);
-                      const jsonData = {
-                        id: msg.id,
-                        role: msg.role,
-                        text: cleanText,
-                        time: msg.time,
-                        highlights: msg.highlights || []
-                      };
-                      const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json;charset=utf-8' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `answer-${Date.now()}.json`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
-                  >
-                    Экспортировать в JSON
-                  </button>
-                </div>
-              </>
+      <div className="flex justify-start mb-4 animate-fade-in">
+        <div className="max-w-[85%]">
+          <div className="text-sm text-blue-600 leading-relaxed break-words whitespace-pre-wrap">
+            {isStopped ? (
+              <span className="italic text-gray-400">Запрос остановлен</span>
+            ) : (
+              displayText.split('\n').map((line, i) => <p key={i} className={i > 0 ? 'mt-2' : ''}>{clean(line)}</p>)
             )}
           </div>
+          {isMed && !isStopped && <p className="text-[10px] text-text-muted mt-2 border-l-2 border-gray-200 pl-2">Нейросеть не врач, она может ошибаться. Обратитесь к специалисту.</p>}
+          {!isStopped && (
+            <div className="flex items-center gap-1 mt-2 relative">
+              <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-surface-dim transition-colors">
+                {copied ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/></svg> : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>}
+              </button>
+              <button onClick={() => handleLike(liked === true ? null : true)} className="p-1.5 rounded-lg hover:bg-surface-dim"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={liked===true?'#22c55e':'#888'} strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" fill={liked===true?'#22c55e':'none'}/></svg></button>
+              <button onClick={() => handleLike(liked === false ? null : false)} className="p-1.5 rounded-lg hover:bg-surface-dim"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={liked===false?'#ef4444':'#888'} strokeWidth="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" fill={liked===false?'#ef4444':'none'}/></svg></button>
+              <button onClick={() => setMenuOpen(!menuOpen)} className="p-1.5 rounded-lg hover:bg-surface-dim"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-xl py-1 bg-white border border-border min-w-[150px] animate-fade-in">
+                    <button onClick={() => { const b = new Blob([clean(msg.text)], { type: 'text/plain;charset=utf-8' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = 'answer.txt'; a.click(); setMenuOpen(false); }} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">Экспорт TXT</button>
+                    <button onClick={() => { const j = JSON.stringify({ text: clean(msg.text), time: msg.time }, null, 2); const b = new Blob([j], { type: 'application/json;charset=utf-8' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = 'answer.json'; a.click(); setMenuOpen(false); }} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">Экспорт JSON</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
   }
-
   return null;
-}
-
-function ThinkingDots() {
-  return (
-    <div className="flex gap-1 items-end">
-      {[0, 1, 2].map(i => (
-        <div
-          key={i}
-          className="w-2 h-2 rounded-full"
-          style={{
-            background: 'linear-gradient(135deg, #78dca8, #7ecfcf)',
-            animation: `bounce ${1.2}s ease-in-out ${i * 0.18}s infinite`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <rect x="9" y="9" width="13" height="13" rx="2" stroke="#666" strokeWidth="1.5"/>
-      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="#666" strokeWidth="1.5"/>
-    </svg>
-  );
-}
-
-function LikeIcon({ filled }: { filled: boolean }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={filled ? 'animate-like' : ''}>
-      <defs>
-        <linearGradient id="likeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#22c55e" />
-          <stop offset="50%" stopColor="#16a34a" />
-          <stop offset="100%" stopColor="#15803d" />
-        </linearGradient>
-      </defs>
-      <path 
-        d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" 
-        fill={filled ? 'url(#likeGradient)' : 'none'}
-        stroke={filled ? 'url(#likeGradient)' : '#666'} 
-        strokeWidth="1.8" 
-        strokeLinecap="round" 
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DislikeIcon({ filled }: { filled: boolean }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={filled ? 'animate-dislike' : ''}>
-      <defs>
-        <linearGradient id="dislikeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ef4444" />
-          <stop offset="50%" stopColor="#dc2626" />
-          <stop offset="100%" stopColor="#b91c1c" />
-        </linearGradient>
-      </defs>
-      <path 
-        d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3zm7-13h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" 
-        fill={filled ? 'url(#dislikeGradient)' : 'none'}
-        stroke={filled ? 'url(#dislikeGradient)' : '#666'} 
-        strokeWidth="1.8" 
-        strokeLinecap="round" 
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DotsIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="5" r="1.5" fill="#666"/>
-      <circle cx="12" cy="12" r="1.5" fill="#666"/>
-      <circle cx="12" cy="19" r="1.5" fill="#666"/>
-    </svg>
-  );
-}
-
-function ChevronDown() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-      <path d="M6 9l6 6 6-6" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
+});

@@ -1,321 +1,112 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Chat, Message, User } from '../types';
+import { Chat, User } from '../types';
 import MessageBubble from './MessageBubble';
 
 interface Props {
   chat: Chat | null;
-  onSend: (text: string, editingMsgId?: string) => void;
+  onSend: (text: string, editingMsgId?: string, media?: string[]) => void;
   user: User | null;
+  isGenerating?: boolean;
+  onStop?: () => void;
 }
 
-function getGreeting(name: string): string {
-  const hour = new Date().getHours();
-  const userName = name || 'Гость';
-  if (hour >= 5 && hour < 12) return `Доброе утро, ${userName}`;
-  if (hour >= 12 && hour < 18) return `Добрый день, ${userName}`;
-  if (hour >= 18 && hour < 23) return `Добрый вечер, ${userName}`;
-  return `Доброй ночи, ${userName}`;
+function greet(name: string) {
+  const h = new Date().getHours();
+  const u = name || 'Гость';
+  if (h >= 5 && h < 12) return `Доброе утро, ${u}`;
+  if (h >= 12 && h < 18) return `Добрый день, ${u}`;
+  if (h >= 18 && h < 23) return `Добрый вечер, ${u}`;
+  return `Доброй ночи, ${u}`;
 }
 
-const MAX_INPUT_LENGTH = 4000;
-
-export default function ChatArea({ chat, onSend, user }: Props) {
+export default function ChatArea({ chat, onSend, user, isGenerating, onStop }: Props) {
   const [input, setInput] = useState('');
-  const [focused, setFocused] = useState(false);
-  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
-  const [inputSlideDown, setInputSlideDown] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showGlow, setShowGlow] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [slide, setSlide] = useState(false);
+  const [media, setMedia] = useState<string[]>([]);
+  const ta = useRef<HTMLTextAreaElement>(null);
+  const end = useRef<HTMLDivElement>(null);
+  const fi = useRef<HTMLInputElement>(null);
+  const msgs = chat?.messages || [];
+  const hasText = input.trim().length > 0;
 
-  const messages = chat?.messages || [];
-  const hasInput = input.trim().length > 0;
+  useEffect(() => { (window as any).__currentChatMessages = msgs; }, [msgs]);
+  useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+  useEffect(() => { if (editId) ta.current?.focus(); }, [editId]);
 
-  useEffect(() => {
-    (window as any).__currentChatMessages = messages;
-  }, [messages]);
+  const send = useCallback(() => {
+    if (isGenerating && !editId) return;
+    const t = input.trim();
+    if (!t && !media.length) return;
+    if (editId) { onSend(t, editId); setEditId(null); }
+    else { onSend(t, undefined, media.length ? media : undefined); }
+    setInput(''); setMedia([]);
+    setSlide(true); setTimeout(() => setSlide(false), 300);
+  }, [input, editId, media, onSend, isGenerating]);
 
-  useEffect(() => {
-    if (messages.length > 0) {
-      setHasStarted(true);
-    } else {
-      setHasStarted(false);
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  useEffect(() => {
-    if (editingMsgId) {
-      textareaRef.current?.focus();
-    }
-  }, [editingMsgId]);
-
-  const triggerGlowTimer = useCallback(() => {
-    if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
-    setShowGlow(false);
-    glowTimerRef.current = setTimeout(() => {
-      setShowGlow(true);
-    }, 25000);
-  }, []);
-
-  useEffect(() => {
-    if (messages.length === 0) {
-      setShowGlow(true);
-    } else {
-      const last = messages[messages.length - 1];
-      if (last.role === 'assistant') {
-        triggerGlowTimer();
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    Array.from(e.target.files || []).forEach(f => {
+      if (f.type.startsWith('image/')) {
+        const r = new FileReader();
+        r.onload = ev => { if (ev.target?.result) setMedia(p => [...p, ev.target!.result as string]); };
+        r.readAsDataURL(f);
       }
-    }
-  }, [messages, triggerGlowTimer]);
-
-  const handleSend = useCallback(() => {
-    const text = input.trim();
-    if (!text) return;
-
-    setHasStarted(true);
-
-    if (editingMsgId) {
-      onSend(text, editingMsgId);
-      setEditingMsgId(null);
-    } else {
-      onSend(text);
-    }
-    setInput('');
-
-    setInputSlideDown(true);
-    setTimeout(() => setInputSlideDown(false), 350);
-  }, [input, editingMsgId, onSend]);
-
-  const handleEditStart = useCallback((msg: Message) => {
-    setEditingMsgId(msg.id);
-    setInput(msg.text);
-    setTimeout(() => textareaRef.current?.focus(), 50);
-  }, []);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingMsgId(null);
-    setInput('');
-  }, []);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    });
+    if (fi.current) fi.current.value = '';
   };
 
-  const handleFocus = () => {
-    setFocused(true);
-    setShowGlow(false);
-    if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
-  };
+  const started = msgs.length > 0;
 
-  const handleBlur = () => {
-    setFocused(false);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    if (val.length > MAX_INPUT_LENGTH) return;
-    const clean = val.replace(/[\u0300-\u036f\u0483-\u0489\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/g, '');
-    setInput(clean);
-    if (editingMsgId && clean.trim() === '') {
-      setEditingMsgId(null);
-    }
-  };
-
-  const centerMode = !hasStarted;
+  const inputBox = (
+    <div className="relative rounded-3xl bg-surface border border-border shadow-sm transition-all duration-300" style={{ transform: slide ? 'translateY(6px)' : '', opacity: slide ? 0.6 : 1 }}>
+      <div className="relative z-[1] flex flex-col px-4 pt-3 pb-2">
+        {media.length > 0 && <div className="flex flex-wrap gap-2 mb-2">{media.map((f, i) => <div key={i} className="relative group"><img src={f} className="w-20 h-20 object-cover rounded-xl" /><button onClick={() => setMedia(p => p.filter((_, j) => j !== i))} className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold bg-black/50 hover:bg-black/70 transition-colors">×</button></div>)}</div>}
+        <textarea ref={ta} value={input}
+          onChange={e => { const v = e.target.value; if (v.length > 4000) return; setInput(v.replace(/[\u0300-\u036f\u0483-\u0489]/g, '')); if (editId && !v.trim()) setEditId(null); }}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          placeholder="Пишите пожелание" rows={1}
+          className="w-full bg-transparent outline-none resize-none text-sm text-text leading-relaxed min-h-[36px] max-h-[120px]"
+        />
+        <div className="flex items-center justify-between mt-1.5 min-h-[36px]">
+          <button onClick={() => fi.current?.click()} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-dim transition-colors btn btn-light" title="Прикрепить фото">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#555" strokeWidth="2" strokeLinecap="round"/></svg>
+          </button>
+          <div className="flex items-center gap-2">
+            {editId && <button onClick={() => { setEditId(null); setInput(''); }} className="text-xs text-text-muted hover:text-text-secondary px-3 py-1.5 rounded-xl hover:bg-surface-dim transition-colors">Отменить</button>}
+            {isGenerating && !editId ? (
+              <button onClick={onStop} className="w-10 h-10 rounded-full bg-primary btn btn-dark"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+            ) : (
+              <button onClick={send} disabled={!hasText && !media.length} className="w-10 h-10 rounded-full bg-primary btn btn-dark transition-opacity disabled:opacity-25 disabled:cursor-default"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round"/><path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+            )}
+          </div>
+        </div>
+      </div>
+      <input ref={fi} type="file" accept="image/*" multiple className="hidden" onChange={onFile} />
+    </div>
+  );
 
   return (
-    <div className="flex flex-col h-full" style={{ maxWidth: centerMode ? '100%' : '900px', margin: '0 auto', width: '100%' }}>
-      {centerMode ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 pb-16">
-          <div
-            className="mb-8 transition-all duration-500"
-            style={{
-              opacity: inputSlideDown ? 0 : 1,
-              transform: inputSlideDown ? 'translateY(-30px)' : 'translateY(0)',
-            }}
-          >
-            <h1 className="text-4xl font-semibold text-gray-800 text-center">
-              {getGreeting(user?.name || '')}
-            </h1>
+    <div className="flex flex-col w-[90%] max-w-[850px] mx-auto h-full min-h-0">
+      {!started ? (
+        <div className="flex-1 flex flex-col items-center justify-center px-4 pb-12 animate-fade-in bg-gradient-to-b from-white to-gray-50">
+          <div className="mb-6 transition-all duration-500" style={{ opacity: slide ? 0 : 1, transform: slide ? 'translateY(-16px)' : '' }}>
+            <h1 className="text-3xl font-semibold text-gray-800 text-center">{greet(user?.name || '')}</h1>
           </div>
-
-          <div
-            className="w-full max-w-2xl relative rounded-[32px]"
-            style={{
-              background: 'rgba(255,255,255,0.97)',
-              border: '1px solid rgba(0,0,0,0.07)',
-              boxShadow: '0 2px 20px rgba(0,0,0,0.05)',
-              transform: inputSlideDown ? 'translateY(10px)' : 'translateY(0)',
-              opacity: inputSlideDown ? 0.6 : 1,
-              transition: 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease',
-            }}
-          >
-            {showGlow && !focused && <GlowRing />}
-
-            <div className="flex flex-col px-5 pt-4 pb-3">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
-                placeholder="Пишите пожелание"
-                rows={2}
-                className="w-full bg-transparent outline-none resize-none text-sm text-gray-700 leading-relaxed"
-                style={{
-                  minHeight: '48px',
-                  maxHeight: '120px',
-                  fontFamily: 'inherit',
-                  color: '#333',
-                }}
-              />
-              <div className="flex items-center justify-end mt-2 min-h-[32px] gap-2">
-                {editingMsgId && (focused || hasInput) && (
-                  <button
-                    onClick={handleCancelEdit}
-                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors px-3 py-1.5 rounded-xl hover:bg-gray-100"
-                  >
-                    Отменить
-                  </button>
-                )}
-                {(focused || hasInput) && <SendButton onClick={handleSend} />}
-              </div>
-            </div>
-          </div>
-          <p className="text-center text-xs text-gray-400 mt-4">Нейросеть может ошибаться!</p>
+          <div className="w-full max-w-[800px]">{inputBox}</div>
+          <p className="text-center text-xs text-gray-500 mt-3">Нейросеть может ошибаться!</p>
         </div>
       ) : (
         <>
-          <div
-            className="flex-1 overflow-y-auto px-8 py-6"
-            style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,0,0,0.08) transparent', maxWidth: '900px', margin: '0 auto', width: '100%' }}
-          >
-            {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                onEditStart={handleEditStart}
-              />
-            ))}
-            <div ref={messagesEndRef} />
+          <div className="flex-1 overflow-y-auto px-4 py-4 bg-gradient-to-b from-white to-gray-50">
+            {msgs.map(m => <MessageBubble key={m.id} msg={m} chatId={chat?.id} onEditStart={m => { setEditId(m.id); setInput(m.text); setTimeout(() => ta.current?.focus(), 50); }} />)}
+            <div ref={end} />
           </div>
-
-          <div className="px-6 pb-3 pt-0 flex-shrink-0" style={{ maxWidth: '900px', margin: '0 auto', width: '100%' }}>
-            <div
-              className="relative rounded-[32px]"
-              style={{
-                background: 'rgba(255,255,255,0.97)',
-                border: '1px solid rgba(0,0,0,0.07)',
-                boxShadow: '0 2px 20px rgba(0,0,0,0.05)',
-                transform: inputSlideDown ? 'translateY(10px)' : 'translateY(0)',
-                opacity: inputSlideDown ? 0.6 : 1,
-                transition: 'transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease',
-              }}
-            >
-              {showGlow && !focused && <GlowRing />}
-
-              <div className="flex flex-col px-5 pt-4 pb-3">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  onFocus={handleFocus}
-                  onBlur={handleBlur}
-                  placeholder="Пишите пожелание"
-                  rows={2}
-                  className="w-full bg-transparent outline-none resize-none text-sm text-gray-700 leading-relaxed"
-                  style={{
-                    minHeight: '48px',
-                    maxHeight: '120px',
-                    fontFamily: 'inherit',
-                    color: '#333',
-                  }}
-                />
-                <div className="flex items-center justify-between mt-2 min-h-[32px]">
-                  <div>
-                    {editingMsgId && (focused || hasInput) && (
-                      <button
-                        onClick={handleCancelEdit}
-                        className="text-xs text-gray-400 hover:text-gray-600 transition-colors px-3 py-1.5 rounded-xl hover:bg-gray-100"
-                      >
-                        Отменить
-                      </button>
-                    )}
-                  </div>
-                  {(focused || hasInput) && <SendButton onClick={handleSend} />}
-                </div>
-              </div>
-            </div>
-            <p className="text-center text-xs text-gray-400 mt-2 mb-0.5">Нейросеть может ошибаться!</p>
+          <div className="px-4 pb-2 pt-0 flex-shrink-0 w-full max-w-[800px] mx-auto bg-white">
+            {inputBox}
+            <p className="text-center text-xs text-gray-500 mt-1.5 mb-0.5">Нейросеть может ошибаться!</p>
           </div>
         </>
       )}
     </div>
-  );
-}
-
-function GlowRing() {
-  return (
-    <>
-      <div
-        className="absolute inset-0 rounded-[32px] pointer-events-none"
-        style={{
-          background: 'linear-gradient(90deg, #e07878 0%, #78dca8 25%, #7ecfcf 50%, #d4c5a0 75%, #e07878 100%)',
-          backgroundSize: '200% 100%',
-          animation: 'gradientFlow 3s linear infinite',
-          padding: '2px',
-          WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-          WebkitMaskComposite: 'xor',
-          mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-          maskComposite: 'exclude',
-        }}
-      />
-      <div
-        className="absolute inset-0 rounded-[32px] pointer-events-none"
-        style={{
-          boxShadow: '0 0 20px rgba(224,120,120,0.25), 0 0 30px rgba(120,220,168,0.15)',
-        }}
-      />
-    </>
-  );
-}
-
-function SendButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center justify-center rounded-xl relative overflow-hidden flex-shrink-0 transition-transform hover:scale-105 active:scale-95"
-      style={{ width: '38px', height: '38px' }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(135deg, #4285f4 0%, #5a9fd4 100%)',
-          borderRadius: '12px',
-        }}
-      />
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        style={{ position: 'relative', zIndex: 1 }}
-      >
-        <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M22 2L15 22 11 13 2 9l20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </button>
   );
 }
